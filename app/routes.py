@@ -1,7 +1,7 @@
 # -*- encoding utf-8 -*-
 
 from flask import current_app as app
-from flask import request, abort, json
+from flask import request, json
 from flask_login import login_user, logout_user
 
 from app import login_manager, db
@@ -23,9 +23,10 @@ def login():
         user = User.query.get(id)
     if user:
         login_user(user)
-        return json.jsonify(user.to_json())
+        return json.jsonify({'error': None, 'data': user.to_json()})
     else:
-        abort(401)
+        json.jsonify({'error': 'Неверный логин/пароль',
+                      'data': None})
 
 
 @login_manager.user_loader
@@ -36,13 +37,17 @@ def load_user(id):
 @app.route('/logout')
 def logout():
     logout_user()
-    return 200
+    return json.jsonify({'error': None, 'data': 'Успешно'})
 
 
 @app.route('/registr')
 def registr():
     id = int(request.args.get('id'))
     email = request.args.get('email')
+    existing_user = User.query.filter_by(email=email).first()
+    if existing_user is not None:
+        return json.jsonify({'error': 'Пользователь с таким email уже существует',
+                             'data': None})
     name = request.args.get('name')
     passwordToken = int(request.args.get('passwordToken'))
     type = int(request.args.get('type'))
@@ -51,38 +56,46 @@ def registr():
     db.session.add(auth)
     db.session.add(user)
     db.session.commit()
-    return json.jsonify(user.to_json())
+    return json.jsonify({'error': None, 'data': user.to_json()})
 
 
 @app.route('/projects/<project_id>')
 def get_project_by_id(project_id):
     project = [i for i in Project.query.all() if i['id'] == int(project_id)]
     if len(project) == 0:
-        abort(404)
-    return json.jsonify(project[0])
+        return json.jsonify({'error': 'Проект не найден',
+                             'data': None})
+    return json.jsonify({'error': None, 'data': project[0]})
 
 
 @app.route('/projects', methods=['GET'])
 def get_projects():
     projects = [i.to_json() for i in Project.query.all()]
-    return json.jsonify(projects)
+    return json.jsonify({'error': None, 'data': projects})
+
+
+@app.errorhandler(500)
+def not_found(error):
+    db.session.rollback()
+    return json.jsonify({'error': error.specific,
+                         'data': None})
 
 
 @app.route('/projects/my/<id>')
 def get_projects_by_contact(id):
     projects = [i.to_json() for i in Project.query.filter_by(contact=id).all()]
-    return json.jsonify(projects)
+    return json.jsonify({'error': None, 'data': projects})
 
 
 @app.route('/users', methods=['GET'])
 def get_users():
     users = [i.to_json() for i in User.query.all()]
-    return json.jsonify(users)
+    return json.jsonify({'error': None, 'data': users})
 
 
 @app.route('/users/<id>')
 def get_user_by_id(id):
-    return json.jsonify(User.query.get(id).to_json())
+    return json.jsonify({'error': None, 'data': User.query.get(id).to_json()})
 
 
 # @app.route('/create_all')
@@ -107,11 +120,11 @@ def get_user_by_id(id):
 #     return str(200)
 
 
-@app.route('/delete')
-def delete():
-    Auth.query.filter_by(id=1761161690).delete()
-    Auth.query.filter_by(id=-1235243292).delete()
-    User.query.filter_by(id=1761161690).delete()
-    User.query.filter_by(id=-1235243292).delete()
-    db.session.commit()
-    return "200"
+# @app.route('/delete')
+# def delete():
+#     Auth.query.filter_by(id=1761161690).delete()
+#     Auth.query.filter_by(id=-1235243292).delete()
+#     User.query.filter_by(id=1761161690).delete()
+#     User.query.filter_by(id=-1235243292).delete()
+#     db.session.commit()
+#     return "200"
