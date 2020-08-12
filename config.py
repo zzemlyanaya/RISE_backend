@@ -1,4 +1,5 @@
 import os
+
 app_dir = os.path.abspath(os.path.dirname(__file__))
 
 
@@ -8,12 +9,13 @@ class Config(object):
                               'sqlite:///' + os.path.join(app_dir, 'rise.db')
     SQLALCHEMY_ECHO = False
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_MIGRATE_REPO = os.path.join(app_dir, 'db_repository')
 
-    DEBUG=True
-    JSON_AS_ASCII=False
+    DEBUG = True
+    JSON_AS_ASCII = False
 
-    HOST='0.0.0.0'
-    PORT='5000'
+    HOST = '0.0.0.0'
+    PORT = '5000'
 
     UPLOAD_FOLDER = os.path.join(app_dir, 'files')
     ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg', 'svg', 'mp4', 'mov'}

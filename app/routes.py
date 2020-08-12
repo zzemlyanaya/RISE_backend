@@ -5,54 +5,60 @@ from flask import request, json
 from flask_login import login_user, logout_user
 
 from app import login_manager, db
-from app.models import Auth, User, Project
+from app.models import Auth, User, Project, Tag, Chat, Message, ChatShortView
 
 
 @app.route('/')
 def index():
-    return 'Hello, World!'
+    return json.jsonify({'error': None, 'data': 'OK'})
 
 
 @app.route('/login')
 def login():
-    id = int(request.args.get('id'))
+    user_id = int(request.args.get('id'))
     pass_hash = int(request.args.get('passwordToken'))
-    auth = Auth.query.filter_by(id=id).first()
+    auth = Auth.query.filter_by(id=user_id).first()
     user = None
-    if pass_hash == auth.passwordToken:
-        user = User.query.get(id)
+    if auth is not None and pass_hash == auth.passwordToken:
+        user = User.query.get(user_id)
     if user:
-        login_user(user)
+        login_user(user, remember=True)
         return json.jsonify({'error': None, 'data': user.to_json()})
     else:
-        json.jsonify({'error': 'Неверный логин/пароль',
-                      'data': None})
+        return json.jsonify({'error': 'Неверный логин/пароль',
+                             'data': None})
 
 
 @login_manager.user_loader
-def load_user(id):
-    return User.query.get(int(id))
+def load_user(user_id):
+    return User.query.get(int(user_id))
 
 
 @app.route('/logout')
 def logout():
     logout_user()
-    return json.jsonify({'error': None, 'data': 'Успешно'})
+    return json.jsonify({'error': None, 'data': 'OK'})
+
+
+@app.route('/auths')
+def get_auths():
+    auths = [i.to_json() for i in Auth.query.all()]
+    return json.jsonify({'error': None, 'data': auths})
 
 
 @app.route('/registr')
 def registr():
-    id = int(request.args.get('id'))
+    user_id = int(request.args.get('id'))
     email = request.args.get('email')
     existing_user = User.query.filter_by(email=email).first()
     if existing_user is not None:
         return json.jsonify({'error': 'Пользователь с таким email уже существует',
                              'data': None})
     name = request.args.get('name')
-    passwordToken = int(request.args.get('passwordToken'))
-    type = int(request.args.get('type'))
-    auth = Auth(id, passwordToken)
-    user = User(id, name, email, type, None, None, None)
+    password_token = int(request.args.get('passwordToken'))
+    typee = int(request.args.get('type'))
+    auth = Auth(user_id, password_token)
+    user = User(user_id, email, name, typee, None, None, None, None)
     db.session.add(auth)
     db.session.add(user)
     db.session.commit()
@@ -74,16 +80,24 @@ def get_projects():
     return json.jsonify({'error': None, 'data': projects})
 
 
-@app.errorhandler(500)
-def not_found(error):
-    db.session.rollback()
-    return json.jsonify({'error': error.specific,
-                         'data': None})
+@app.route('/projects', methods=['POST'])
+def add_project():
+    return ''
 
 
-@app.route('/projects/my/<id>')
-def get_projects_by_contact(id):
-    projects = [i.to_json() for i in Project.query.filter_by(contact=id).all()]
+@app.route('/projects/my/<proj_id>', methods=['GET', 'UPDATE', 'DELETE'])
+def get_projects_by_contact(proj_id):
+    if request.method == 'GET':
+        projects = [i.to_json() for i in Project.query.filter_by(contact=proj_id).all()]
+        return json.jsonify({'error': None, 'data': projects})
+    else:
+        return str(200)
+
+
+@app.route('/projects/tag/<tag>')
+def get_projects_by_tag(tag):
+    tag_from_db = Tag.query.filter_by(name=tag).first()
+    projects = [i.to_json() for i in tag_from_db.projects]
     return json.jsonify({'error': None, 'data': projects})
 
 
@@ -93,38 +107,84 @@ def get_users():
     return json.jsonify({'error': None, 'data': users})
 
 
-@app.route('/users/<id>')
-def get_user_by_id(id):
-    return json.jsonify({'error': None, 'data': User.query.get(id).to_json()})
+@app.route('/users/<user_id>')
+def get_user_by_id(user_id):
+    return json.jsonify({'error': None, 'data': User.query.get(user_id).to_json()})
 
 
-# @app.route('/create_all')
-# def create_all():
-#       user = User(1761161690, 'cita_del@citadel.ru', 'CITADEL', 1, None, None,  None)
-#       db.session.add(user)
-#       user = User(-1235243292, 'unknown@un.known', 'Company you need', 0, None, None, None)
-#       db.session.add(user)
-#     auth = Auth(1761161690, -1861353340)
-#     db.session.add(auth)
-#     auth = Auth(-1235243292, -1861353340)
-#     db.session.add(auth)
-#         project = Project('RISE', 1761161690, 'The best startup platform ever',
-#                           'Some very long text which i definitely don\'t won\'t to type so it\'s kinda short text',
-#                           '1000000 рублей', '1 месяц', 'http://bestApp.ever/RISE')
-#         db.session.add(project)
-#         project = Project('CITADEL Education', 1761161690, 'The best education platform ever',
-#                           'Some very long text which i definitely don\'t won\'t to type so it\'s kinda short text',
-#                           '1100000 рублей', '2 месяца', 'http://bestApp.ever/Education')
-#         db.session.add(project)
-#     db.session.commit()
-#     return str(200)
+@app.route('/tags')
+def get_tags():
+    tags = [i.to_json() for i in Tag.query.all()]
+    return json.jsonify({'error': None, 'data': tags})
 
 
-# @app.route('/delete')
-# def delete():
-#     Auth.query.filter_by(id=1761161690).delete()
-#     Auth.query.filter_by(id=-1235243292).delete()
-#     User.query.filter_by(id=1761161690).delete()
-#     User.query.filter_by(id=-1235243292).delete()
-#     db.session.commit()
-#     return "200"
+@app.route('/chats')
+def get_all_chats():
+    chats = [i.to_json() for i in Chat.query.all()]
+    return json.jsonify({'error': None, 'data': chats})
+
+
+@app.route('/chats/<chat_id>', methods=['GET', 'POST', 'DELETE'])
+def get_chat_by_id(chat_id):
+    messages = [i.to_json() for i in Message.query.filter_by(chat_id=chat_id).order_by(Message.time).all()]
+    return json.jsonify({'error': None, 'data': messages})
+
+
+@app.route('/chats/by_user/<user_id>')
+def get_chats_by_user(user_id):
+    chats = Chat.query.filter_by(user1=user_id).all()
+    chats.extend(Chat.query.filter_by(user2=user_id).all())
+    res = []
+    for i in chats:
+        if i.user1 == int(user_id):
+            to = int(i.user2)
+        else:
+            to = int(i.user1)
+        res.append(ChatShortView(i.id, to, User.query.get(to).name, i.lastMessage).to_json())
+    return json.jsonify({'error': None, 'data': res})
+
+
+@app.errorhandler(500)
+def not_found(error):
+    db.session.rollback()
+    return json.jsonify({'error': error.specific,
+                         'data': None})
+
+
+@app.route('/create_all')
+def create_all():
+    db.create_all()
+    user = User(1761161690, 'cita_del@citadel.ru', 'CITADEL', 1, None, None, None, None)
+    db.session.add(user)
+    user = User(-1235243292, 'unknown@un.known', 'Company you need', 0, None, None, None, None)
+    db.session.add(user)
+    auth = Auth(1761161690, -1861353340)
+    db.session.add(auth)
+    auth = Auth(-1235243292, -1861353340)
+    db.session.add(auth)
+
+    tagAndroid = Tag('Android')
+    tagWeb = Tag('Web')
+    tagAI = Tag('AI')
+    tagB = Tag('B-to-B')
+    tagEd = Tag('Education')
+    db.session.add_all([tagAndroid, tagAI, tagB, tagEd, tagWeb])
+    db.session.commit()
+
+    project = Project(name='RISE', contact=1761161690, descriptionLong='The best startup platform ever',
+                      cost='100 000', deadlines='1 месяц', website='http://bestApp.ever/RISE')
+    project.tags.extend([tagAndroid, tagB])
+    db.session.add(project)
+    project1 = Project('CITADEL Education', 1761161690, 'The best education platform ever',
+                       '110 000 000', '2 месяца', 'http://bestApp.ever/Education')
+    project1.tags.extend([tagAI, tagEd, tagWeb])
+    db.session.add(project1)
+
+    chat = Chat(1761161690, -1235243292, "Hi there!")
+    db.session.add(chat)
+
+    message = Message(1, 1761161690, -1235243292, "Hi there!", "0/0/00 00:00")
+    db.session.add(message)
+
+    db.session.commit()
+    return str(200)
