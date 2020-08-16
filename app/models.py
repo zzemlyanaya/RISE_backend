@@ -7,7 +7,7 @@ class User(UserMixin, db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(128), index=True, unique=True, nullable=False)
-    name = db.Column(db.String(64), index=True, unique=True, nullable=False)
+    name = db.Column(db.String(64), index=True, nullable=False)
     type = db.Column(db.Integer, index=True, nullable=False, default=1)
     age = db.Column(db.Integer, nullable=True)
     country = db.Column(db.String(128), nullable=True)
@@ -16,7 +16,7 @@ class User(UserMixin, db.Model):
     project = db.relationship('Project', cascade="all, delete-orphan")
 
     def to_json(self):
-        return {'id': self.id, 'email': self.email, 'name': self.name, 'type': self.type,
+        return {'userId': self.id, 'email': self.email, 'name': self.name, 'type': self.type,
                 'age': self.age, 'country': self.country, 'city': self.city, 'about': self.about}
 
     def __init__(self, id, email, name, type, age, country, city, about):
@@ -41,22 +41,24 @@ class Project(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(64), index=True, unique=True)
     contact = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
-    descriptionLong = db.Column(db.Text)
+    contact_name = db.Column(db.String(128), nullable=False)
+    description_long = db.Column(db.Text)
     cost = db.Column(db.String(64), index=True)
     deadlines = db.Column(db.String(64), index=True)
     website = db.Column(db.String(64), nullable=True)
 
-    def to_json(self):
-        return {'id': self.id, 'name': self.name, 'contact': self.contact,
-                'descriptionLong': self.descriptionLong, 'cost': self.cost,
-                'deadlines': self.deadlines, 'website': self.website
+    def to_json(self, tags_string):
+        return {'projectId': self.id, 'name': self.name, 'contact': self.contact, 'contactName': self.contact_name,
+                'descriptionLong': self.description_long, 'cost': self.cost,
+                'deadlines': self.deadlines, 'website': self.website, 'tags': tags_string
                 }
 
-    def __init__(self, name, contact, descriptionLong, cost, deadlines, website):
+    def __init__(self, name, contact, contact_name, description_long, cost, deadlines, website):
         self.contact = contact
         self.name = name
-        self.descriptionLong = descriptionLong
-        self.cos = cost
+        self.contact_name = contact_name
+        self.description_long = description_long
+        self.cost = cost
         self.deadlines = deadlines
         self.website = website
 
@@ -64,7 +66,7 @@ class Project(db.Model):
 class Tag(db.Model):
     __tablename__ = 'tags'
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(64), index=True, unique=True, nullable=False)
+    name = db.Column(db.String(64), index=True, nullable=False)
     projects = db.relationship('Project', secondary=project_tag, backref='tags')
 
     def __init__(self, name):
@@ -126,15 +128,17 @@ class Chat(db.Model):
 
 class ChatShortView:
     chat_id = 0
-    toID = 0
+    user_id = 0
+    to_id = 0
     toName = ""
     lastMessage = ""
 
     def to_json(self):
-        return {'chat_id': self.chat_id, 'toID': self.toID, 'toName': self.toName, 'lastMessage': self.lastMessage}
+        return {'chatId': self.chat_id, 'userId': self.user_id, 'toID': self.to_id, 'toName': self.toName, 'lastMessage': self.lastMessage}
 
-    def __init__(self, chat, id, name, mes):
+    def __init__(self, chat, user_id, to_id, name, mes):
         self.chat_id = chat
-        self.toID = id
+        self.user_id = user_id
+        self.to_id = to_id
         self.toName = name
         self.lastMessage = mes

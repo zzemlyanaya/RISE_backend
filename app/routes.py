@@ -3,6 +3,7 @@
 from flask import current_app as app
 from flask import request, json
 from flask_login import login_user, logout_user
+from sqlalchemy.exc import IntegrityError
 
 from app import login_manager, db
 from app.models import Auth, User, Project, Tag, Chat, Message, ChatShortView
@@ -17,6 +18,10 @@ def index():
 def login():
     user_id = int(request.args.get('id'))
     pass_hash = int(request.args.get('passwordToken'))
+    user = User.query.filter_by(id=user_id).first()
+    if user is None:
+        return json.jsonify({'error': 'Неверный логин/пароль',
+                             'data': None})
     auth = Auth.query.filter_by(id=user_id).first()
     user = None
     if auth is not None and pass_hash == auth.passwordToken:
@@ -65,7 +70,7 @@ def registr():
     return json.jsonify({'error': None, 'data': user.to_json()})
 
 
-@app.route('/projects/<project_id>')
+@app.route('/projects/<project_id>', methods=['POST'])
 def get_project_by_id(project_id):
     project = [i for i in Project.query.all() if i['id'] == int(project_id)]
     if len(project) == 0:
@@ -74,27 +79,73 @@ def get_project_by_id(project_id):
     return json.jsonify({'error': None, 'data': project[0]})
 
 
+@app.route('/projects/<project_id>', methods=['DELETE'])
+def delete_project_by_id(project_id):
+    try:
+        Project.query.filter_by(id=project_id).delete()
+        db.session.commit()
+        return json.jsonify({'error': None, 'data': 'OK'})
+    except Exception as e:
+        db.session.rollback()
+        print(getattr(e, 'message', repr(e)))
+        return json.jsonify({'error': 'Что-то пошло не так! Попробуйте ещё раз.', 'data': None})
+
+
 @app.route('/projects', methods=['GET'])
 def get_projects():
-    projects = [i.to_json() for i in Project.query.all()]
+    projects = [i.to_json(tags_to_string(i.tags)) for i in Project.query.all()]
     return json.jsonify({'error': None, 'data': projects})
+
+
+def tags_to_string(tags):
+    return ','.join([i.name for i in tags])
 
 
 @app.route('/projects', methods=['POST'])
 def add_project():
-    return ''
+    data = request.json['nameValuePairs']
+    project = None
+    try:
+        project = Project.query.filter_by(name=data['name']).first()
+        if project is not None:
+            project.name = data['name']
+            project.deadlines = data['deadlines']
+            project.description_long = data['descriptionLong']
+            project.cost = data['cost']
+            project.website = data['website']
+        else:
+            project = Project(data['name'], data['contact'], data['contactName'], data['descriptionLong'],
+                              data['cost'], data['deadlines'], data['website'])
+
+        if data['tags'] != '':
+            tags = [Tag(i) for i in data['tags'].split(',')]
+            for i in tags:
+                if Tag.query.filter_by(name=i.name).first() is None:
+                    db.session.add(i)
+            project.tags.clear()
+            project.tags.extend(tags)
+        db.session.add(project)
+        db.session.commit()
+        return json.jsonify({'error': None, 'data': 'OK'})
+    except IntegrityError as e:
+        print(getattr(e, 'message', repr(e)))
+        return json.jsonify({'error': 'Проект с таким названием уже существует.', 'data': None})
+    except Exception as e:
+        db.session.rollback()
+        print(getattr(e, 'message', repr(e)))
+        return json.jsonify({'error': 'Что-то пошло не так! Попробуйте ещё раз.', 'data': None})
 
 
-@app.route('/projects/my/<proj_id>', methods=['GET', 'UPDATE', 'DELETE'])
+@app.route('/projects/my/<proj_id>', methods=['GET'])
 def get_projects_by_contact(proj_id):
     if request.method == 'GET':
-        projects = [i.to_json() for i in Project.query.filter_by(contact=proj_id).all()]
+        projects = [i.to_json(tags_to_string(i.tags)) for i in Project.query.filter_by(contact=proj_id).all()]
         return json.jsonify({'error': None, 'data': projects})
     else:
         return str(200)
 
 
-@app.route('/projects/tag/<tag>')
+@app.route('/projects/by_tag/<tag>')
 def get_projects_by_tag(tag):
     tag_from_db = Tag.query.filter_by(name=tag).first()
     projects = [i.to_json() for i in tag_from_db.projects]
@@ -140,7 +191,7 @@ def get_chats_by_user(user_id):
             to = int(i.user2)
         else:
             to = int(i.user1)
-        res.append(ChatShortView(i.id, to, User.query.get(to).name, i.lastMessage).to_json())
+        res.append(ChatShortView(i.id, user_id, to, User.query.get(to).name, i.lastMessage).to_json())
     return json.jsonify({'error': None, 'data': res})
 
 
@@ -166,16 +217,19 @@ def create_all():
     tagAndroid = Tag('Android')
     tagWeb = Tag('Web')
     tagAI = Tag('AI')
-    tagB = Tag('B-to-B')
+    tagB = Tag('B2B')
+    tagC = Tag('B2C')
+    tagG = Tag('B2G')
     tagEd = Tag('Education')
-    db.session.add_all([tagAndroid, tagAI, tagB, tagEd, tagWeb])
+    db.session.add_all([tagAndroid, tagAI, tagB, tagEd, tagWeb, tagC, tagG])
     db.session.commit()
 
-    project = Project(name='RISE', contact=1761161690, descriptionLong='The best startup platform ever',
+    project = Project(name='RISE', contact=1761161690, contact_name='CITADEL',
+                      description_long='The best startup platform ever',
                       cost='100 000', deadlines='1 месяц', website='http://bestApp.ever/RISE')
-    project.tags.extend([tagAndroid, tagB])
+    project.tags.extend([tagAndroid, tagB, tagC, tagG])
     db.session.add(project)
-    project1 = Project('CITADEL Education', 1761161690, 'The best education platform ever',
+    project1 = Project('CITADEL Education', 1761161690, 'CITADEL', 'The best education platform ever',
                        '110 000 000', '2 месяца', 'http://bestApp.ever/Education')
     project1.tags.extend([tagAI, tagEd, tagWeb])
     db.session.add(project1)
@@ -183,8 +237,15 @@ def create_all():
     chat = Chat(1761161690, -1235243292, "Hi there!")
     db.session.add(chat)
 
-    message = Message(1, 1761161690, -1235243292, "Hi there!", "0/0/00 00:00")
+    message = Message(1, 1761161690, -1235243292, "Hi there!", "0.0.00 00:00")
     db.session.add(message)
 
+    db.session.commit()
+    return str(200)
+
+
+@app.route('/delete')
+def delete():
+    Message.query.delete()
     db.session.commit()
     return str(200)
