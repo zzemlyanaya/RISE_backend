@@ -2,22 +2,27 @@
 
 from flask import current_app as app
 from flask import request, json
-from flask_login import login_user, logout_user
+from flask_login import login_user, logout_user, login_required
 from sqlalchemy.exc import IntegrityError
 
 from app import login_manager, db
 from app.models import Auth, User, Project, Tag, Chat, Message, ChatShortView
 
 
+# INIT ROUTE
+
 @app.route('/')
 def index():
     return json.jsonify({'error': None, 'data': 'OK'})
 
 
+# LOGIN ROUTES
+
 @app.route('/login')
 def login():
     user_id = int(request.args.get('id'))
     pass_hash = int(request.args.get('passwordToken'))
+    keep_auth = request.args.get('keepAuth')
     user = User.query.filter_by(id=user_id).first()
     if user is None:
         return json.jsonify({'error': 'Неверный логин/пароль',
@@ -27,7 +32,7 @@ def login():
     if auth is not None and pass_hash == auth.passwordToken:
         user = User.query.get(user_id)
     if user:
-        login_user(user, remember=True)
+        login_user(user, remember=keep_auth)
         return json.jsonify({'error': None, 'data': user.to_json()})
     else:
         return json.jsonify({'error': 'Неверный логин/пароль',
@@ -43,12 +48,6 @@ def load_user(user_id):
 def logout():
     logout_user()
     return json.jsonify({'error': None, 'data': 'OK'})
-
-
-@app.route('/auths')
-def get_auths():
-    auths = [i.to_json() for i in Auth.query.all()]
-    return json.jsonify({'error': None, 'data': auths})
 
 
 @app.route('/registr')
@@ -67,30 +66,13 @@ def registr():
     db.session.add(auth)
     db.session.add(user)
     db.session.commit()
+    login_user(user, remember=False)
     return json.jsonify({'error': None, 'data': user.to_json()})
 
 
-@app.route('/projects/<project_id>', methods=['POST'])
-def get_project_by_id(project_id):
-    project = [i for i in Project.query.all() if i['id'] == int(project_id)]
-    if len(project) == 0:
-        return json.jsonify({'error': 'Проект не найден',
-                             'data': None})
-    return json.jsonify({'error': None, 'data': project[0]})
+# PROJECTS ROUTES
 
-
-@app.route('/projects/<project_id>', methods=['DELETE'])
-def delete_project_by_id(project_id):
-    try:
-        Project.query.filter_by(id=project_id).delete()
-        db.session.commit()
-        return json.jsonify({'error': None, 'data': 'OK'})
-    except Exception as e:
-        db.session.rollback()
-        print(getattr(e, 'message', repr(e)))
-        return json.jsonify({'error': 'Что-то пошло не так! Попробуйте ещё раз.', 'data': None})
-
-
+@login_required
 @app.route('/projects', methods=['GET'])
 def get_projects():
     projects = [i.to_json(tags_to_string(i.tags)) for i in Project.query.all()]
@@ -101,6 +83,7 @@ def tags_to_string(tags):
     return ','.join([i.name for i in tags])
 
 
+@login_required
 @app.route('/projects', methods=['POST'])
 def add_project():
     data = request.json['nameValuePairs']
@@ -136,6 +119,30 @@ def add_project():
         return json.jsonify({'error': 'Что-то пошло не так! Попробуйте ещё раз.', 'data': None})
 
 
+@login_required
+@app.route('/projects/<project_id>', methods=['GET'])
+def get_project_by_id(project_id):
+    project = [i for i in Project.query.all() if i['id'] == int(project_id)]
+    if len(project) == 0:
+        return json.jsonify({'error': 'Проект не найден',
+                             'data': None})
+    return json.jsonify({'error': None, 'data': project[0]})
+
+
+@login_required
+@app.route('/projects/<project_id>', methods=['DELETE'])
+def delete_project_by_id(project_id):
+    try:
+        Project.query.filter_by(id=project_id).delete()
+        db.session.commit()
+        return json.jsonify({'error': None, 'data': 'OK'})
+    except Exception as e:
+        db.session.rollback()
+        print(getattr(e, 'message', repr(e)))
+        return json.jsonify({'error': 'Что-то пошло не так! Попробуйте ещё раз.', 'data': None})
+
+
+@login_required
 @app.route('/projects/my/<proj_id>', methods=['GET'])
 def get_projects_by_contact(proj_id):
     if request.method == 'GET':
@@ -145,6 +152,7 @@ def get_projects_by_contact(proj_id):
         return str(200)
 
 
+@login_required
 @app.route('/projects/by_tag/<tag>')
 def get_projects_by_tag(tag):
     tag_from_db = Tag.query.filter_by(name=tag).first()
@@ -152,16 +160,51 @@ def get_projects_by_tag(tag):
     return json.jsonify({'error': None, 'data': projects})
 
 
+# USERS ROUTES
+
+@login_required
 @app.route('/users', methods=['GET'])
 def get_users():
     users = [i.to_json() for i in User.query.all()]
     return json.jsonify({'error': None, 'data': users})
 
 
-@app.route('/users/<user_id>')
+@login_required
+@app.route('/users', methods=['POST'])
+def add_user():
+    data = request.json['nameValuePairs']
+    user = None
+    try:
+        user = User.query.filter_by(id=data['userId']).first()
+        if user is not None:
+            user.name = data['name']
+            # TODO update user
+        else:
+            user = User(data['userId'], data['email'], data['name'], data['type'], data['age'], data['country'],
+                        data['city'], data['about'])
+        db.session.add(user)
+        db.session.commit()
+        return json.jsonify({'error': None, 'data': 'OK'})
+    except Exception as e:
+        db.session.rollback()
+        print(getattr(e, 'message', repr(e)))
+        return json.jsonify({'error': 'Что-то пошло не так! Попробуйте ещё раз.', 'data': None})
+
+
+@login_required
+@app.route('/users/<user_id>', methods=['GET'])
 def get_user_by_id(user_id):
     return json.jsonify({'error': None, 'data': User.query.get(user_id).to_json()})
 
+
+@login_required
+@app.route('/users/<user_id>', methods=['DELETE'])
+def delete_user_by_id(user_id):
+    User.query.filter_by(id=user_id).delete()
+    return json.jsonify({'error': None, 'data': 'OK'})
+
+
+# TAGS ROUTES
 
 @app.route('/tags')
 def get_tags():
@@ -169,18 +212,43 @@ def get_tags():
     return json.jsonify({'error': None, 'data': tags})
 
 
-@app.route('/chats')
+# CHATS ROUTES
+
+@app.route('/chats', methods=['GET'])
 def get_all_chats():
     chats = [i.to_json() for i in Chat.query.all()]
     return json.jsonify({'error': None, 'data': chats})
 
 
-@app.route('/chats/<chat_id>', methods=['GET', 'POST', 'DELETE'])
+@login_required
+@app.route('/chats', methods=['POST'])
+def add_chat():
+    data = request.json['nameValuePairs']
+    chat = Chat(data['user1'], data['user2'], data['lastMessage'])
+    try:
+        db.session.add(chat)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(getattr(e, 'message', repr(e)))
+        return json.jsonify({'error': 'Что-то пошло не так! Попробуйте ещё раз.', 'data': None})
+
+
+@login_required
+@app.route('/chats/<chat_id>', methods=['GET'])
 def get_chat_by_id(chat_id):
     messages = [i.to_json() for i in Message.query.filter_by(chat_id=chat_id).order_by(Message.time).all()]
     return json.jsonify({'error': None, 'data': messages})
 
 
+@login_required
+@app.route('/chats/<chat_id>', methods=['DELETE'])
+def delete_chat_by_id(chat_id):
+    Chat.query.filter_by(id=chat_id).delete()
+    return json.jsonify({'error': None, 'data': 'OK'})
+
+
+@login_required
 @app.route('/chats/by_user/<user_id>')
 def get_chats_by_user(user_id):
     chats = Chat.query.filter_by(user1=user_id).all()
@@ -194,6 +262,8 @@ def get_chats_by_user(user_id):
         res.append(ChatShortView(i.id, user_id, to, User.query.get(to).name, i.lastMessage).to_json())
     return json.jsonify({'error': None, 'data': res})
 
+
+# OTHER ROUTES
 
 @app.errorhandler(500)
 def not_found(error):
@@ -240,12 +310,5 @@ def create_all():
     message = Message(1, 1761161690, -1235243292, "Hi there!", "0.0.00 00:00")
     db.session.add(message)
 
-    db.session.commit()
-    return str(200)
-
-
-@app.route('/delete')
-def delete():
-    Message.query.delete()
     db.session.commit()
     return str(200)
